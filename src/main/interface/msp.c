@@ -1449,6 +1449,80 @@ static mspResult_e mspFcProcessOutCommandWithArg(uint8_t cmdMSP, sbuf_t *src, sb
         }
 
         break;
+    case MSP_MULTIPLE_MSP:
+        {
+            #define MAX_MSP_MULTIPLE_REQUESTS 20
+            uint8_t mspCmdBuf[MAX_MSP_MULTIPLE_REQUESTS];
+            uint8_t mspCmdSize[MAX_MSP_MULTIPLE_REQUESTS];
+            uint8_t maxMSPs = 0;
+            if (sbufBytesRemaining(src) == 0) { 
+				return MSP_RESULT_ERROR;
+			}
+            const int maxBytes = sbufBytesRemaining(dst);
+            int bytesRemaining = maxBytes;
+            mspPacket_t packetIn, packetOut;
+            sbufInit(&packetIn.buf, src->ptr, src->end);
+            sbufInit(&packetOut.buf, dst->ptr, dst->end);
+            while (sbufBytesRemaining(src) && maxMSPs < MAX_MSP_MULTIPLE_REQUESTS) {
+                uint8_t newMSP = sbufReadU8(src);
+                mspCmdBuf[maxMSPs] = newMSP;
+                uint8_t* resetPtr = sbufPtr(&packetOut.buf);
+                packetIn.cmd = newMSP;
+                mspFcProcessCommand(&packetIn, &packetOut, mspPostProcessFn);
+                uint8_t mspSize = maxBytes - sbufBytesRemaining(&packetOut.buf);
+                mspSize++; //need to add length information for each MSP
+                mspCmdSize[maxMSPs] = mspSize;
+                packetOut.buf.ptr = resetPtr;
+                bytesRemaining -= mspSize;
+                if (bytesRemaining > 0) {
+					maxMSPs++;
+				}
+                else {
+					break;
+				}
+            }
+            for (uint8_t j = 0; j < maxMSPs; j++) {
+                sbufWriteU8(&packetOut.buf, mspCmdSize[j]);
+                packetIn.cmd = mspCmdBuf[j];
+                mspFcProcessCommand(&packetIn, &packetOut, mspPostProcessFn);
+            }
+            dst->ptr = packetOut.buf.ptr;
+        }
+        break;
+    case MSP_MULTIPLE_MSP:
+        {
+            const uint8_t MAX_MSP_MULTIPLE_REQUESTS = 20;
+            uint8_t mspCmdBuf[MAX_MSP_MULTIPLE_REQUESTS];
+            uint8_t mspCmdSize[MAX_MSP_MULTIPLE_REQUESTS];
+            uint8_t maxMSPs = 0;
+            if(sbufBytesRemaining(src) == 0) return MSP_RESULT_ERROR;
+            const int maxBytes = sbufBytesRemaining(dst);
+            int bytesRemaining = maxBytes;
+            mspPacket_t packetIn, packetOut;
+            sbufInit(&packetIn.buf, src->ptr, src->end);
+            sbufInit(&packetOut.buf, dst->ptr, dst->end);
+            while(sbufBytesRemaining(src) && maxMSPs < MAX_MSP_MULTIPLE_REQUESTS) {
+                uint8_t newMSP = sbufReadU8(src);
+                mspCmdBuf[maxMSPs] = newMSP;
+                uint8_t* resetPtr = sbufPtr(&packetOut.buf);
+                packetIn.cmd = newMSP;
+                mspFcProcessCommand(&packetIn, &packetOut, mspPostProcessFn);
+                uint8_t mspSize = maxBytes - sbufBytesRemaining(&packetOut.buf);
+                mspSize++; //need to add length information for each MSP
+                mspCmdSize[maxMSPs] = mspSize;
+                packetOut.buf.ptr = resetPtr;
+                bytesRemaining -= mspSize;
+                if(bytesRemaining > 0) maxMSPs++;
+                else break;
+            }
+            for(uint8_t j = 0; j < maxMSPs; j++) {
+                sbufWriteU8(&packetOut.buf, mspCmdSize[j]);
+                packetIn.cmd = mspCmdBuf[j];
+                mspFcProcessCommand(&packetIn, &packetOut, mspPostProcessFn);
+            }
+            dst->ptr = packetOut.buf.ptr;
+        }
+        break;
     default:
         return MSP_RESULT_CMD_UNKNOWN;
     }
