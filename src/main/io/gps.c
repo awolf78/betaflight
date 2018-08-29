@@ -280,6 +280,10 @@ void gpsInit(void)
     gpsSetState(GPS_UNKNOWN);
 
     gpsData.lastMessage = millis();
+    
+    if (gpsConfig()->provider == GPS_MSP) { // no serial ports used when GPS_MSP is configured
+        return;
+    }
 
     serialPortConfig_t *gpsPortConfig = findSerialPortConfig(FUNCTION_GPS);
     if (!gpsPortConfig) {
@@ -474,6 +478,8 @@ void gpsInitHardware(void)
         gpsInitUblox();
 #endif
         break;
+    default:
+        break;
     }
 }
 
@@ -574,6 +580,8 @@ bool gpsNewFrame(uint8_t c)
 #ifdef USE_GPS_UBLOX
         return gpsNewFrameUBLOX(c);
 #endif
+        break;
+    default:
         break;
     }
     return false;

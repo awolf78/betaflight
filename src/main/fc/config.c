@@ -48,6 +48,7 @@
 #include "io/beeper.h"
 #include "io/ledstrip.h"
 #include "io/serial.h"
+#include "io/gps.h"
 
 #include "pg/beeper.h"
 #include "pg/beeper_dev.h"
@@ -169,9 +170,15 @@ static void validateAndFixConfig(void)
         pgResetFn_serialConfig(serialConfigMutable());
     }
 
+#if defined(USE_GPS)
+    serialPortConfig_t *gpsSerial = findSerialPortConfig(FUNCTION_GPS);
+    if (gpsConfig()->provider == GPS_MSP && gpsSerial) {
+        serialRemovePort(gpsSerial->identifier);
+    }
+#endif
     if (
 #if defined(USE_GPS)
-        !findSerialPortConfig(FUNCTION_GPS) &&
+        gpsConfig()->provider != GPS_MSP && !gpsSerial &&
 #endif
         true) {
         featureClear(FEATURE_GPS);
@@ -278,7 +285,7 @@ static void validateAndFixConfig(void)
             pidProfilesMutable(i)->pid[PID_YAW].F = 0;
         }
     }
-    
+
 #if defined(USE_THROTTLE_BOOST)
     if (!rcSmoothingIsEnabled() ||
         !(rxConfig()->rcInterpolationChannels == INTERPOLATION_CHANNELS_RPYT
@@ -418,7 +425,7 @@ void validateAndFixGyroConfig(void)
         featureClear(FEATURE_DYNAMIC_FILTER);
     }
 #endif
-    
+
     // Prevent invalid notch cutoff
     if (gyroConfig()->gyro_soft_notch_cutoff_1 >= gyroConfig()->gyro_soft_notch_hz_1) {
         gyroConfigMutable()->gyro_soft_notch_hz_1 = 0;
