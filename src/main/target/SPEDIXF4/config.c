@@ -18,19 +18,19 @@
  * If not, see <http://www.gnu.org/licenses/>.
  */
 
-#pragma once
+#include <stdbool.h>
+#include <stdint.h>
 
-struct dispatchEntry_s;
-typedef void dispatchFunc(struct dispatchEntry_s* self);
+#include "platform.h"
 
-typedef struct dispatchEntry_s {
-    dispatchFunc *dispatch;
-    uint32_t delayedUntil;
-    struct dispatchEntry_s *next;
-    bool inQue;
-} dispatchEntry_t;
+#ifdef USE_TARGET_CONFIG
 
-bool dispatchIsEnabled(void);
-void dispatchEnable(void);
-void dispatchProcess(uint32_t currentTime);
-void dispatchAdd(dispatchEntry_t *entry, int delayUs);
+#include "fc/config.h"
+
+#include "telemetry/telemetry.h"
+
+void targetConfiguration(void)
+{
+	telemetryConfigMutable()->halfDuplex = 0;
+}
+#endif

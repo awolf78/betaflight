@@ -857,8 +857,10 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile, const rollAndPitchT
         DEBUG_SET(DEBUG_ANTI_GRAVITY, 1, lrintf(antiGravityThrottleHpf * 1000));
     }
     DEBUG_SET(DEBUG_ANTI_GRAVITY, 0, lrintf(itermAccelerator * 1000));
+
     // gradually scale back integration when above windup point
-    const float dynCi = MIN((1.0f - motorMixRange) * ITermWindupPointInv, 1.0f) * dT * itermAccelerator;
+    const float dynCi = constrainf((1.0f - motorMixRange) * ITermWindupPointInv, 0.0f, 1.0f)
+        * dT * itermAccelerator;
 
     // Precalculate gyro deta for D-term here, this allows loop unrolling
     float gyroRateDterm[XYZ_AXIS_COUNT];
@@ -898,6 +900,10 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile, const rollAndPitchT
 
         // -----calculate error rate
         const float gyroRate = gyro.gyroADCf[axis]; // Process variable from gyro output in deg/sec
+        float errorRate = currentPidSetpoint - gyroRate; // r - y
+        handleCrashRecovery(
+            pidProfile->crash_recovery, angleTrim, axis, currentTimeUs, gyroRate,
+            &currentPidSetpoint, &errorRate);
 
 #ifdef USE_ABSOLUTE_CONTROL
         float acCorrection = 0;
@@ -905,7 +911,7 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile, const rollAndPitchT
 #endif        
 
         const float ITerm = pidData[axis].I;
-        float itermErrorRate = currentPidSetpoint - gyroRate;
+        float itermErrorRate = errorRate;
 
 #if defined(USE_ITERM_RELAX)
         if (itermRelax && (axis < FD_YAW || itermRelax == ITERM_RELAX_RPY || itermRelax == ITERM_RELAX_RPY_INC)) {
@@ -916,7 +922,7 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile, const rollAndPitchT
             const bool isDecreasingI = ((ITerm > 0) && (itermErrorRate < 0)) || ((ITerm < 0) && (itermErrorRate > 0));
             if ((itermRelax >= ITERM_RELAX_RP_INC) && isDecreasingI) {
                 // Do Nothing, use the precalculed itermErrorRate
-            } else if (itermRelaxType == ITERM_RELAX_SETPOINT && setpointHpf < 30) {
+            } else if (itermRelaxType == ITERM_RELAX_SETPOINT && setpointHpf < ITERM_RELAX_SETPOINT_THRESHOLD) {
                 itermErrorRate *= itermRelaxFactor;
             } else if (itermRelaxType == ITERM_RELAX_GYRO ) {
                 itermErrorRate = fapplyDeadband(setpointLpf - gyroRate, setpointHpf);
@@ -967,11 +973,6 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile, const rollAndPitchT
             }
         }
 #endif
-
-        float errorRate = currentPidSetpoint - gyroRate; // r - y
-        handleCrashRecovery(
-            pidProfile->crash_recovery, angleTrim, axis, currentTimeUs, gyroRate,
-            &currentPidSetpoint, &errorRate);
 
         // --------low-level gyro-based PID based on 2DOF PID controller. ----------
         // 2-DOF PID controller with optional filter on derivative term.
